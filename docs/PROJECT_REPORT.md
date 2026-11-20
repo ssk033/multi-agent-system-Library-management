@@ -61,10 +61,10 @@ Work followed the stack in the problem statement.
 2. The schema added checks, a partial unique loan index, content hashes, audit, notifications, settings, and chat tables around the requested books, students, loans, acquisitions, policies, and users.
 3. Services implement search, transactions, approvals, analytics, and embeddings.
 4. The graph delegates, confirms, commits, and streams traces.
-5. Dashboard pages read those services. Students do not see staff navigation.
+5. Dashboard pages read those services. Students do not see staff navigation. A student borrows from the catalogue or the assistant, then returns or renews on Active Loans. Both paths call the same loan service.
 6. Unit tests lock the circulation rules. An integration test is ready for Neon.
 
-Gemini Flash is the default reasoning model and `text-embedding-004` is the default embedding model, both overridable. If a future SDK drops a name, only the environment value changes.
+`gemini-3.5-flash` is the default chat model and `gemini-embedding-001` is the default embedding model, both overridable. Embeddings are requested at 768 dimensions. `gemini-2.5-flash` is no longer available to new keys, so that name is mapped to `gemini-3.5-flash`. If the chat model fails, the deterministic plan still calls the database tools.
 
 ## 7. Implementation notes
 
@@ -104,9 +104,9 @@ What the unit tests demonstrate:
 After Neon and Gemini credentials are configured:
 
 1. `npm run db:setup`, `npm run db:push`, `npm run db:seed`.
-2. Sign in as `student@library.edu` / `Student@123`.
+2. Sign in as `student@library.edu` / `Student@123`. If the overview is empty after a reseed, sign out and sign in once more.
 3. Ask for books on generative AI and confirm the cards come from the catalog.
-4. Ask to borrow *Operating System Concepts* and confirm. The available count drops by one.
+4. Borrow *Clean Code* from **Book Catalogue**, or ask the assistant to borrow *Operating System Concepts* and confirm. The available count drops by one. Return it from **Active Loans**.
 5. Ask which books are on loan, then return one and observe the fine when the loan is overdue.
 6. Ask about the borrowing limit and compare the answer with **Library Policies**.
 7. Ask the library to purchase a title that has no copies, such as another copy of Kurose and Ross. Sign in as the librarian and approve or reject it. The audit log records the decision.
@@ -118,7 +118,7 @@ After Neon and Gemini credentials are configured:
 - The rate limiter is in-memory.
 - Fine payment is recorded as a balance. There is no payment gateway.
 - Dewey numbers are suggestions.
-- Dashboard browser testing of authenticated pages needs a live database, which was not available in this workspace.
+- A reseed changes every user id. Old JWTs must sign in again before chat or loans will match a student.
 - Integration coverage of semantic search runs only with a Gemini key and `DATABASE_URL`.
 
 ## 11. Conclusion

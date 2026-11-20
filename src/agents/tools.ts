@@ -137,9 +137,14 @@ async function suggestClassification(title: string, description: string) {
         rationale: z.string(),
       }),
     );
-    const result = await model.invoke(
-      `Suggest a library category and a Dewey Decimal number for this book. The number is only a suggestion.\nTitle: ${title}\nDescription: ${description}`,
-    );
+    const result = await Promise.race([
+      model.invoke(
+        `Suggest a library category and a Dewey Decimal number for this book. The number is only a suggestion.\nTitle: ${title}\nDescription: ${description}`,
+      ),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Classification timed out")), 8000);
+      }),
+    ]);
     return { ...result, disclaimer: DISCLAIMER, source: "gemini" };
   } catch {
     return {

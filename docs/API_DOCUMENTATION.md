@@ -11,7 +11,7 @@ All JSON responses use `{ "ok": true, "data": ... }` or `{ "ok": false, "error":
 | Method | Path | Permission | Behavior |
 | --- | --- | --- | --- |
 | GET | `/api/chat` | assistant | List the caller's sessions. `?sessionId=` returns that session's messages. |
-| POST | `/api/chat` | assistant | Run one graph turn. Response is `text/event-stream`. |
+| POST | `/api/chat` | assistant | Run one graph turn. Response is `text/event-stream`. Returns 401 when the JWT user is no longer in `users`. |
 
 POST body:
 
@@ -37,7 +37,7 @@ SSE payloads:
 | `books` | Book cards for the UI |
 | `confirmation` | A write is waiting for the user |
 | `done` | Session id and final text |
-| `error` | A safe error string |
+| `error` | A safe error string. A message that asks the user to sign in again means the session predates the current seed. |
 
 More than 30 chat posts per user and IP in a minute return 429.
 
@@ -68,7 +68,7 @@ Semantic mode returns 503 when the embedding API is not configured. The catalog 
 | Method | Path | Who | Behavior |
 | --- | --- | --- | --- |
 | GET | `/api/loans` | own loans, or all loans for staff | Optional `status=HELD` or a loan status. Students only receive their rows. |
-| POST | `/api/loans/issue` | student or staff with `loans.manage` | Body `{ "bookId", "rollNo?" }`. Students cannot set the borrower. |
+| POST | `/api/loans/issue` | student or staff with `loans.manage` | Body `{ "bookId", "rollNo?" }`. Students cannot set the borrower. The catalogue **Borrow** button calls this route after the student confirms. |
 | POST | `/api/loans/return` | owner or staff | Body `{ "loanId" }`. |
 | POST | `/api/loans/renew` | owner or staff | Body `{ "loanId" }`. |
 
@@ -88,6 +88,7 @@ These three POSTs are the direct dashboard path. The assistant uses the same ser
 
 | Method | Path | Permission | Behavior |
 | --- | --- | --- | --- |
+| GET | `/api/session` | any signed-in user | 200 when `users.id` still matches the JWT. 401 after a reseed. The dashboard calls this once and sends a stale session to login. |
 | GET | `/api/analytics` | analytics | Overview cards, monthly issue and return counts, categories, popular titles, borrowers, acquisition trend. |
 | GET | `/api/agent-logs` | agents | Aggregates and recent execution rows. Admin only. |
 | GET | `/api/policies` | policies.read | Active policies. `?q=` runs policy RAG or keyword retrieval. Embeddings are not returned. |

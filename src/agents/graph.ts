@@ -1,12 +1,9 @@
-import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { AIMessage } from "@langchain/core/messages";
 import { END, interrupt, MemorySaver, START, StateGraph, type LangGraphRunnableConfig } from "@langchain/langgraph";
-import { z } from "zod";
 import type { AgentContext } from "@/agents/context";
-import { FINAL_PROMPT, SUPERVISOR_PROMPT } from "@/agents/prompts";
 import { runSpecialist } from "@/agents/runner";
 import { LibraryAnnotation, type LibraryState } from "@/agents/state";
 import { makeTrace } from "@/agents/trace";
-import { geminiConfigured, getChatModel, messageText } from "@/lib/gemini";
 import { errorMessage } from "@/lib/errors";
 import { composeFallbackAnswer } from "@/lib/response";
 import { planRoute, resolveRoute, type AgentName } from "@/lib/routing";
@@ -31,38 +28,10 @@ function actorOf(ctx: AgentContext): SessionUser {
 async function supervisorNode(state: LibraryState, config: LangGraphRunnableConfig) {
   const iteration = state.iteration + 1;
   const plan = planRoute(state.userText);
-  let llmChoice: AgentName | "FINISH" | null = null;
-  let reason = "Routing from the supervisor plan.";
-
-  if (geminiConfigured() && !(state.confirmation && !state.confirmation.confirmed)) {
-    try {
-      const model = getChatModel(0).withStructuredOutput(
-        z.object({
-          next: z.enum(["discovery", "circulation", "acquisition", "FINISH"]),
-          reason: z.string(),
-        }),
-      );
-      const decision = (await model.invoke([
-        new SystemMessage(SUPERVISOR_PROMPT),
-        new HumanMessage(
-          [
-            `User request: ${state.userText}`,
-            `Plan: ${plan.join(" -> ") || "discovery"}`,
-            `Completed agents: ${state.completed.join(", ") || "none"}`,
-            `Observations: ${state.observations.slice(-6).join(" | ") || "none"}`,
-          ].join("\n"),
-        ),
-      ])) as { next?: AgentName | "FINISH"; reason?: string };
-      llmChoice = decision.next ?? null;
-      reason = (decision.reason ?? reason).slice(0, 240);
-    } catch (error) {
-      reason = `The supervisor used its deterministic plan after the model request failed. ${error instanceof Error ? error.message : ""}`.slice(0, 240);
-    }
-  } else if (!geminiConfigured()) {
-    reason = "The supervisor is using deterministic routing because GEMINI_API_KEY is not configured.";
-  } else {
-    reason = "A confirmation is pending, so no further specialist will run until the user decides.";
-  }
+  const llmChoice: AgentName | "FINISH" | null = null;
+  const reason = state.confirmation && !state.confirmation.confirmed
+    ? "A confirmation is pending, so no further specialist will run until the user decides."
+    : `The supervisor plan is ${plan.join(" then ") || "discovery"}.`;
 
   const next = resolveRoute({
     llmChoice,
@@ -182,31 +151,8 @@ async function finalizeNode(state: LibraryState, config: LangGraphRunnableConfig
   const draft = composeFallbackAnswer(state.observations, pending);
   const trace = makeTrace("supervisor", "final_response", "Preparing the final response.", { channel: "agent" });
   config.writer?.({ type: "trace", trace });
-
-  if (!geminiConfigured()) {
-    config.writer?.({ type: "token", text: draft });
-    return { finalText: draft, messages: [new AIMessage(draft)], traces: [trace] };
-  }
-
-  try {
-    let full = "";
-    const stream = await getChatModel(0.3).stream([
-      new SystemMessage(FINAL_PROMPT),
-      new HumanMessage(draft),
-    ]);
-    for await (const chunk of stream) {
-      const text = messageText(chunk.content);
-      if (!text) continue;
-      full += text;
-      config.writer?.({ type: "token", text });
-    }
-    const answer = full.trim() || draft;
-    if (!full.trim()) config.writer?.({ type: "token", text: answer });
-    return { finalText: answer, messages: [new AIMessage(answer)], traces: [trace] };
-  } catch {
-    config.writer?.({ type: "token", text: draft });
-    return { finalText: draft, messages: [new AIMessage(draft)], traces: [trace] };
-  }
+  config.writer?.({ type: "token", text: draft });
+  return { finalText: draft, messages: [new AIMessage(draft)], traces: [trace] };
 }
 
 function buildLibraryGraph() {

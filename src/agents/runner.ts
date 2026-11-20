@@ -1,20 +1,11 @@
-import { AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage } from "@langchain/core/messages";
+import { AIMessage, ToolMessage, type BaseMessage } from "@langchain/core/messages";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { createAllTools } from "@/agents/tools";
 import type { AgentContext } from "@/agents/context";
-import { ACQUISITION_PROMPT, CIRCULATION_PROMPT, DISCOVERY_PROMPT } from "@/agents/prompts";
 import type { LibraryState } from "@/agents/state";
 import { AGENT_LABEL, makeTrace } from "@/agents/trace";
-import { geminiConfigured, getChatModel, messageText } from "@/lib/gemini";
 import type { AgentName, AgentTraceEvent, BookCard, ConfirmationRequest } from "@/types";
-
-const PROMPTS: Record<AgentName, string> = {
-  supervisor: "",
-  discovery: DISCOVERY_PROMPT,
-  circulation: CIRCULATION_PROMPT,
-  acquisition: ACQUISITION_PROMPT,
-};
 
 interface SpecialistResult {
   messages: BaseMessage[];
@@ -43,8 +34,18 @@ function absorb(output: string, bucket: { bookCards?: BookCard[]; confirmation?:
     const cards = Array.isArray(parsed.cards) ? parsed.cards : Array.isArray(parsed.books) ? parsed.books : null;
     if (cards && cards.length > 0 && typeof cards[0] === "object" && cards[0] && "title" in cards[0]) {
       bucket.bookCards = cards as BookCard[];
-      const titles = (cards as { title?: string }[]).map((book) => book.title).filter(Boolean).slice(0, 5);
+      const titles = (cards as { title?: string; availableCopies?: number; totalCopies?: number }[])
+        .map((book) => {
+          if (!book.title) return "";
+          return typeof book.availableCopies === "number"
+            ? `${book.title} (${book.availableCopies} of ${book.totalCopies ?? book.availableCopies} copies available)`
+            : book.title;
+        })
+        .filter(Boolean)
+        .slice(0, 5);
       if (titles.length > 0) bucket.observations.push(`Found ${titles.length} relevant title${titles.length === 1 ? "" : "s"}: ${titles.join(", ")}.`);
+    } else if (cards && cards.length === 0) {
+      bucket.observations.push("No catalogue title matched that question.");
     }
     if (parsed.confirmationRequired && typeof parsed.confirmationRequired === "object") {
       bucket.confirmation = parsed.confirmationRequired as ConfirmationRequest;
@@ -74,6 +75,15 @@ async function invokeTool(tools: StructuredToolInterface[], name: string, args: 
   if (!found) return JSON.stringify({ ok: false, error: `Tool ${name} is not available to this agent` });
   const output = await found.invoke(args);
   return typeof output === "string" ? output : JSON.stringify(output);
+}
+
+function catalogQuery(text: string) {
+  const cleaned = text
+    .replace(/[?.,!]/g, " ")
+    .replace(/\b(can|could|would|please|i|me|my|you|the|a|an|to|for|of|on|about|and|or|is|are|was|be|do|does|did|how|many|what|which|show|find|search|recommend|suggest|want|borrow|issue|lend|check|out|take|book|books|three|library|currently|have|issued|all|available|unavailable|availability|copy|copies|due|overdue|fine|fines|catalogue|catalog|include|there|any|this|that|it|in|with|from|when|where|why|who|long|much|get|give|back|left|remaining|stock|number|count)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.length >= 3 ? cleaned : text;
 }
 
 function extractBookId(text: string): string | null {
@@ -121,13 +131,15 @@ async function runDeterministic(
       await call("getBookDetails", { bookId });
       await call("checkBookAvailability", { bookId });
     } else if (!policy || /\b(book|recommend|find|suggest)\b/i.test(text)) {
-      try {
-        await call("searchBooksSemantic", { query: text });
-      } catch {
-        await call("searchCatalog", { query: text });
+      await call("searchCatalog", { query: catalogQuery(text) });
+      const topical = /\b(find|recommend|suggest|similar|about|learn)\b/i.test(text);
+      if (!bucket.bookCards?.length && topical) {
+        try {
+          await call("searchBooksSemantic", { query: text });
+        } catch {
+          bucket.observations.push("Semantic search did not respond in time. The keyword catalogue result is what is available.");
+        }
       }
-      const outputFailed = bucket.observations.some((item) => /GEMINI_API_KEY|Semantic search requires/i.test(item));
-      if (outputFailed) await call("searchCatalog", { query: text });
     }
   }
 
@@ -184,101 +196,10 @@ export async function runSpecialist(
     emitTrace(config, makeTrace(agent, "agent_start", `${AGENT_LABEL[agent]} started.`, { channel: "agent" })),
   ];
   const tools = createAllTools(ctx)[agent] as StructuredToolInterface[];
-  const confirmationNote = ctx.confirmation?.confirmed
-    ? `The user already confirmed ${ctx.confirmation.action}. Execute that exact action with tools.`
-    : "Do not claim a write succeeded unless the tool result says the database committed.";
-
-  if (!geminiConfigured()) {
-    traces.push(
-      emitTrace(
-        config,
-        makeTrace(agent, "handoff", `${AGENT_LABEL[agent]} is using database tools directly because GEMINI_API_KEY is not configured.`, { channel: "agent" }),
-      ),
-    );
-    const result = await runDeterministic(agent, state, tools, traces, config);
-    result.traces = traces;
-    return result;
-  }
-
-  try {
-    const model = getChatModel(0.1).bindTools(tools);
-    const messages: BaseMessage[] = [
-      new SystemMessage(`${PROMPTS[agent]}\n${confirmationNote}`),
-      ...state.messages.slice(-8),
-    ];
-    const produced: BaseMessage[] = [];
-    const bucket: SpecialistResult = { messages: produced, traces, observations: [] };
-    let calledTool = false;
-
-    for (let step = 0; step < 4; step += 1) {
-      const ai = await model.invoke(messages);
-      produced.push(ai);
-      messages.push(ai);
-      const calls = ai.tool_calls ?? [];
-      if (calls.length === 0) break;
-      calledTool = true;
-      for (const call of calls) {
-        const name = call.name;
-        const args = (call.args ?? {}) as Record<string, unknown>;
-        const toolStarted = Date.now();
-        traces.push(emitTrace(config, makeTrace(agent, "tool_call", `${name} started`, { channel: "tool", data: { tool: name } })));
-        const output = await invokeTool(tools, name, args);
-        absorb(output, bucket);
-        traces.push(
-          emitTrace(
-            config,
-            makeTrace(agent, "tool_result", `${name} completed`, {
-              channel: "tool",
-              data: { tool: name },
-              duration: Date.now() - toolStarted,
-            }),
-          ),
-        );
-        if (output.includes('"database":"committed"')) {
-          traces.push(emitTrace(config, makeTrace(agent, "tool_result", "Database transaction committed.", { channel: "database", data: { tool: name } })));
-        }
-        const toolMessage = new ToolMessage({
-          content: output.slice(0, 8000),
-          tool_call_id: call.id ?? `${name}-${step}`,
-          name,
-        });
-        messages.push(toolMessage);
-        produced.push(toolMessage);
-      }
-    }
-
-    if (!calledTool) {
-      const fallback = await runDeterministic(agent, state, tools, traces, config);
-      fallback.traces = traces;
-      return fallback;
-    }
-
-    const last = produced.at(-1);
-    if (last && last.getType() === "ai") {
-      const text = messageText(last.content).trim();
-      if (text) bucket.observations.push(text);
-    }
-    traces.push(
-      emitTrace(
-        config,
-        makeTrace(agent, "agent_end", `${AGENT_LABEL[agent]} finished.`, {
-          channel: "agent",
-          duration: Date.now() - started,
-        }),
-      ),
-    );
-    return bucket;
-  } catch (error) {
-    traces.push(
-      emitTrace(
-        config,
-        makeTrace(agent, "handoff", "The model was unavailable, so this agent used the catalog tools directly.", { channel: "agent" }),
-      ),
-    );
-    const fallback = await runDeterministic(agent, state, tools, traces, config);
-    fallback.traces = traces;
-    return fallback;
-  }
+  const result = await runDeterministic(agent, state, tools, traces, config);
+  result.traces = traces;
+  const end = traces.find((trace) => trace.type === "agent_end");
+  if (end) end.duration = Date.now() - started;
+  return result;
 }
 
-export { HumanMessage };

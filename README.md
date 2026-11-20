@@ -49,7 +49,7 @@ flowchart TD
 | Auth | Auth.js with credentials and JWT sessions |
 | Tests | Vitest |
 
-Model names are read from the environment. The defaults are `gemini-2.5-flash` and `text-embedding-004` (768 dimensions). Confirm both names in Google AI Studio before a demo, because Gemini model availability changes.
+Model names are read from the environment. The defaults are `gemini-3.5-flash` for chat and `gemini-embedding-001` for embeddings. Embeddings are requested at 768 dimensions. `gemini-2.5-flash` and `gemini-2.0-flash` are retired for new API keys, so the server maps those two names to `gemini-3.5-flash`. Confirm the names in Google AI Studio before a demo, because availability changes.
 
 ## Multi-agent architecture
 
@@ -119,7 +119,7 @@ DATABASE_URL=postgresql://library:library@localhost:5432/library
 
 The server uses the Neon driver when the host contains `neon.tech` and `node-postgres` for every other host, including this container. Restart `npm run dev` after creating `.env.local`. Next.js reads that file only when the process starts.
 
-A local seed was loaded in this workspace. Semantic vectors were skipped because `GEMINI_API_KEY` is empty, so discovery uses keyword search until a key is added and `npm run db:seed` is run again.
+The seed writes embeddings only when `GEMINI_API_KEY` is set. Without a key, discovery stays on keyword search. Restart `npm run dev` after any change to `.env.local`.
 
 ## Neon setup
 
@@ -140,9 +140,9 @@ npm run db:push
 
 ## Gemini configuration
 
-Set `GEMINI_API_KEY`, `GEMINI_MODEL`, and `GEMINI_EMBEDDING_MODEL`. Keep `EMBEDDING_DIMENSIONS=768` unless you also change the `vector(768)` column and rebuild every embedding. A dimension mismatch throws instead of writing a bad vector.
+Set `GEMINI_API_KEY`, `GEMINI_MODEL`, and `GEMINI_EMBEDDING_MODEL`. Keep `EMBEDDING_DIMENSIONS=768` unless you also change the `vector(768)` column and rebuild every embedding. A dimension mismatch throws instead of writing a bad vector. The embedding call uses the Gemini `embedContent` API with `outputDimensionality`, because the LangChain embedding client does not pass that parameter and `gemini-embedding-001` otherwise returns 3072 values.
 
-Without a key, the supervisor and specialists still call the real database tools through the deterministic plan. Semantic search and policy RAG stay on the keyword path, and the UI is told that embeddings were not used.
+Without a key, or when the configured chat model returns an error, the supervisor and specialists still call the real database tools through the deterministic plan. The trace says the plan was used. Semantic search and policy RAG stay on the keyword path until embeddings exist.
 
 ## Environment variables
 
@@ -150,8 +150,8 @@ Without a key, the supervisor and specialists still call the real database tools
 | --- | --- |
 | `DATABASE_URL` | Neon connection string. Server only. |
 | `GEMINI_API_KEY` | Google AI Studio key. Server only. |
-| `GEMINI_MODEL` | Chat and tool-calling model. |
-| `GEMINI_EMBEDDING_MODEL` | Embedding model. |
+| `GEMINI_MODEL` | Chat and tool-calling model. Default `gemini-3.5-flash`. |
+| `GEMINI_EMBEDDING_MODEL` | Embedding model. Default `gemini-embedding-001`. |
 | `EMBEDDING_DIMENSIONS` | Expected vector size. Default `768`. |
 | `AUTH_SECRET` | Auth.js JWT secret. |
 | `AUTH_URL` | Public origin, for example `http://localhost:3000`. |
@@ -178,8 +178,8 @@ The seed is destructive. It truncates library tables and reloads them. It refuse
 
 The development seed contains:
 
-- 22 engineering textbooks across artificial intelligence, machine learning, deep learning, algorithms, databases, operating systems, networks, software engineering, generative AI, cloud computing, cybersecurity, and mathematics.
-- 15 students. `student15@library.edu` (Tara) is inactive.
+- 34 engineering titles across artificial intelligence, machine learning, systems, databases, networks, security, mathematics, and software practice.
+- 25 students. `student15@library.edu` (Tara) is inactive.
 - 10 loans, including active, overdue, and returned rows. Kabir (`student03`) is at the 3-book limit. Meera has a ₹20 fine. Kurose and Ross (`9780136681557`) has zero available copies.
 - 5 policies.
 - 4 acquisition requests: two pending, one approved, one rejected.
@@ -193,7 +193,7 @@ Development accounts created by the seed:
 | Librarian | `librarian@library.edu` | `Librarian@123` |
 | Admin | `admin@library.edu` | `Admin@123` |
 
-Other students use `student02@library.edu` through `student15@library.edu` with the password `Student@123`.
+Other students use `student02@library.edu` through `student25@library.edu` with the password `Student@123`.
 
 ## Running the application
 
@@ -201,7 +201,9 @@ Other students use `student02@library.edu` through `student15@library.edu` with 
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Sign in, then use **AI Library Assistant**. Suggested prompts are on that page. Borrowing, returning, renewing, and acquisition requests open a confirmation dialog before any write.
+Open [http://localhost:3000](http://localhost:3000). Sign in, then use **AI Library Assistant** or **Book Catalogue**. Suggested prompts are on the assistant page. A student can also press **Borrow** on an available title; the same confirmation and loan rules apply. Returning, renewing, and acquisition requests open a confirmation dialog before any write.
+
+`npm run db:seed` replaces every user id. A browser that still holds the previous JWT is sent back to the login page. Sign in again after a reseed. The overview is one database statement, cached for about 12 seconds, so sidebar changes do not repeat that work on every click.
 
 `npm run build` and `npm start` run the production server.
 
@@ -230,7 +232,7 @@ Latest local run, without Neon credentials:
 
 ## Roles
 
-Students can use the assistant, search the catalog, and see their own loans and fines. Librarians manage inventory, loans, students, acquisitions, and analytics. Administrators also manage users, policies, settings, audit logs, and the agent monitor. `src/proxy.ts` blocks pages and API prefixes. Each route handler checks the permission again.
+Students can use the assistant, search the catalog, borrow an available copy, and return or renew their own loans. Librarians manage inventory, loans, students, acquisitions, and analytics. Administrators also manage users, policies, settings, audit logs, and the agent monitor. `src/proxy.ts` blocks pages and API prefixes. Each route handler checks the permission again. `GET /api/session` checks that the JWT user still exists after a reseed.
 
 ## Documentation
 
@@ -250,6 +252,4 @@ Students can use the assistant, search the catalog, and see their own loans and 
 
 ## Verification
 
-On this machine, Docker Postgres with pgvector accepted the schema and the seed. Signing in as `student@library.edu` opened the overview for Aarav Sharma: 1 issued book, ₹0 fines, and 22 catalog titles. The catalog page listed the seeded textbooks and category filters.
-
-`GEMINI_API_KEY` is still empty, so embeddings were not generated and semantic search returns 503 until a key is added and the seed is run again. The assistant then uses keyword search and the deterministic supervisor plan.
+With Neon and a Gemini key configured, `student@library.edu` opens the overview as Aarav Sharma. The seeded catalog has 34 titles. Aarav's active loan is *Operating System Concepts*. Students borrow from the catalogue with **Borrow**, and return or renew from **Active Loans**. Semantic search uses the stored 768-dimension embeddings. If the chat model is unavailable, the same tools still run from the deterministic plan and the trace says so.

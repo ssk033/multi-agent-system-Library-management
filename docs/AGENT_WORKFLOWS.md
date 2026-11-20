@@ -29,19 +29,20 @@ sequenceDiagram
   Commit-->>User: Loan id, due date, transaction committed
 ```
 
-`planRoute` in `src/lib/routing.ts` is the deterministic plan. Gemini may choose the next agent, and `resolveRoute` accepts that choice only when it is one of the remaining planned agents. A pending confirmation forces `confirm_gate` instead of another specialist. After six iterations the supervisor finishes.
+`planRoute` in `src/lib/routing.ts` is the plan the supervisor follows. It does not wait on Gemini to pick the next agent. `resolveRoute` accepts only an agent that is still in that plan. A pending confirmation forces `confirm_gate` instead of another specialist. After six iterations the supervisor finishes. The reply is composed from tool observations.
 
 ## Discovery and RAG
 
 ```mermaid
 flowchart TD
-  query[User query] --> embed{Gemini embeddings configured?}
-  embed -->|yes| vector[Embed query]
+  query[User query] --> keyword[Keyword catalog or policy search]
+  keyword --> hit{Any matching cards?}
+  hit -->|yes| context[Pass books or policies to the agent]
+  hit -->|no match, topical| embed{Gemini embeddings configured?}
+  embed -->|yes| vector[Embed query, 8s timeout]
   vector --> search[pgvector cosine search]
-  search --> threshold{Similarity at or above threshold?}
-  threshold -->|yes| context[Pass books or policies to the agent]
-  threshold -->|no| keyword[Keyword catalog or policy search]
-  embed -->|no| keyword
+  search --> context
+  embed -->|no or timeout| context
   keyword --> context
   context --> answer[Grounded answer or book cards]
 ```
@@ -109,7 +110,7 @@ The model cannot set `APPROVED`. `approveAcquisition` checks the librarian or ad
 Each event has an agent, a channel, and a short message. Channels are `agent`, `tool`, `database`, and `approval`. Examples:
 
 - Supervisor: understanding the request, then delegating.
-- Discovery: `searchBooksSemantic` started and completed.
+- Discovery: catalogue search started and completed. Semantic search is used only when a topical question has no keyword hit.
 - Circulation: eligibility result.
 - Database: transaction committed.
 - Approval: confirmation required, or librarian decision recorded from the dashboard.

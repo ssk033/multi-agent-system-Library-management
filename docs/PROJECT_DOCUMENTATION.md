@@ -17,12 +17,11 @@ The form now does three things. Clicking a seeded account fills the email and pa
 
 What was verified after the fix:
 
-- Local Postgres 16 with pgvector is running in Docker as `library-postgres`.
-- `npm run db:setup`, `npm run db:push`, and `npm run db:seed` completed.
-- `student@library.edu` / `Student@123` reached `/overview` as Aarav Sharma, with 1 issued book, ₹0.00 fines, and 22 catalog titles.
-- `/books` listed the seeded textbooks and the category filter.
+- `student@library.edu` / `Student@123` reaches `/overview` as Aarav Sharma.
+- The catalogue lists the seeded titles, and a student can borrow an available copy from that page.
+- A JWT left over from an older seed cannot insert a chat session. `GET /api/session` returns 401 and the dashboard sends the browser back to login.
 
-Embeddings were not created. `GEMINI_API_KEY` is empty, and the seed refuses to invent vectors. Keyword search works. Semantic search returns HTTP 503 until a real key is added and the seed is run again.
+Embeddings are written only when `GEMINI_API_KEY` is set. The seed does not invent vectors. Keyword search remains available when embeddings are missing.
 
 ## 2. Purpose
 
@@ -37,13 +36,13 @@ npm install --legacy-peer-deps
 npm run dev
 ```
 
-The app is at http://localhost:3000. The current `.env.local` points at the local container:
+The app is at http://localhost:3000. `.env.local` is gitignored. A local container is optional:
 
 ```text
 DATABASE_URL=postgresql://library:library@localhost:5432/library
 ```
 
-That file is gitignored. The container was started with:
+Start that container with:
 
 ```powershell
 docker run -d --name library-postgres -e POSTGRES_USER=library -e POSTGRES_PASSWORD=library -e POSTGRES_DB=library -p 5432:5432 pgvector/pgvector:pg16
@@ -61,7 +60,7 @@ npm run db:seed
 
 For Neon, replace `DATABASE_URL` with the pooled Neon string (`sslmode=require`) and restart the dev server. Hosts containing `neon.tech` use the Neon WebSocket driver. Every other host, including this Docker database, uses `node-postgres`. Both paths support transactions and `SELECT … FOR UPDATE`.
 
-Add `GEMINI_API_KEY` to `.env.local` and run `npm run db:seed` again when you want real embeddings and model routing. Model names stay in `GEMINI_MODEL` and `GEMINI_EMBEDDING_MODEL`. The defaults are `gemini-2.5-flash` and `text-embedding-004` (768 dimensions).
+Add `GEMINI_API_KEY` to `.env.local` and run `npm run db:seed` again when you want embeddings and model routing. Restart `npm run dev` after editing `.env.local`. `GEMINI_MODEL` defaults to `gemini-3.5-flash`. `GEMINI_EMBEDDING_MODEL` defaults to `gemini-embedding-001`, requested at 768 dimensions. The names `gemini-2.5-flash` and `gemini-2.0-flash` are rewritten to `gemini-3.5-flash` because those older chat models return 404 for new keys. If the live model still fails, the graph keeps going on the deterministic plan and the trace says so.
 
 ## 4. Seeded accounts
 
@@ -73,7 +72,7 @@ Click a row on the login page to fill the form, then press Sign in.
 | Librarian | `librarian@library.edu` | `Librarian@123` | Catalog editing, all loans, returns, students, acquisitions, analytics. |
 | Admin | `admin@library.edu` | `Admin@123` | Librarian access plus settings, audit, users, and agent activity. |
 
-The other students are `student02@library.edu` through `student15@library.edu`, all with `Student@123`.
+The other students are `student02@library.edu` through `student25@library.edu`, all with `Student@123`. After `npm run db:seed`, sign out and sign in again. The old session id is not in the new `users` table, so chat and loans would otherwise look empty.
 
 Useful records already in the database:
 
@@ -91,12 +90,12 @@ Useful records already in the database:
 | --- | --- | --- |
 | `/` | Public | Landing page. |
 | `/login` | Public | Credentials form. |
-| `/overview` | Signed in | Counts from the database. Students see only their own loans and fines. |
-| `/assistant` | Signed in | Streams the LangGraph turn and stores the chat. |
-| `/books` | Signed in | Keyword search. Semantic mode needs Gemini. Staff can add, edit, and delete. Delete is refused when a loan still references the book. |
-| `/books/[id]` | Signed in | One title and related titles. |
+| `/overview` | Signed in | One SQL statement for the signed-in role, cached for about 12 seconds. Students see only their own loans and fines. The category chart lists every category. |
+| `/assistant` | Signed in | Streams the LangGraph turn and stores the chat. A retired sign-in returns an error that sends the browser to login. |
+| `/books` | Signed in | Keyword search. Semantic mode needs embeddings. Students borrow with **Borrow** after a confirmation. Staff can add, edit, and delete. Delete is refused when a loan still references the book. |
+| `/books/[id]` | Signed in | One title, related titles, and **Borrow** for a student when a copy is free. |
 | `/students` | Librarian, admin | Registration and profiles. |
-| `/loans` | Signed in | Students see their own rows. Staff see active loans and can issue. |
+| `/loans` | Signed in | Students see their own rows and can return or renew. Staff see active loans and can issue. |
 | `/returns` | Librarian, admin | Return and renew with a confirmation dialog. |
 | `/acquisitions` | Librarian, admin | Approve, reject, or catalog. The decision is audited. |
 | `/agents` | Admin | Rows written after real assistant turns. Empty until someone uses the assistant. |
@@ -123,7 +122,7 @@ flowchart TD
   supervisor --> answer[Final answer]
 ```
 
-Shared state holds the user text, traces, observations, completed agents, book cards, and an optional confirmation. The supervisor may consult Gemini for the next agent. `resolveRoute` accepts that choice only when it is still in the deterministic plan and the iteration count is under six. If the key is missing or the model errors, the trace says the deterministic plan was used.
+Shared state holds the user text, traces, observations, completed agents, book cards, and an optional confirmation. The supervisor follows `planRoute` and does not call the chat model for routing. `resolveRoute` keeps the next agent inside that plan, with a cap of six iterations. Discovery searches the catalogue by keyword first. Semantic search runs only for find, recommend, or learn questions that returned no cards, and the embedding request times out after eight seconds. The answer text is written from those tool results.
 
 Example plans:
 
@@ -160,7 +159,7 @@ Without embeddings, discovery uses keyword search over title, author, ISBN, and 
 
 ## 10. API
 
-JSON responses are `{ "ok": true, "data": ... }` or `{ "ok": false, "error": "..." }`. `POST /api/chat` is server-sent events with `trace`, `token`, `books`, `confirmation`, and `done`. The route list is in `API_DOCUMENTATION.md`.
+JSON responses are `{ "ok": true, "data": ... }` or `{ "ok": false, "error": "..." }`. `POST /api/chat` is server-sent events with `trace`, `token`, `books`, `confirmation`, `done`, and `error`. `GET /api/session` returns 401 when the JWT user is no longer in `users`. The route list is in `API_DOCUMENTATION.md`.
 
 `GET /api/health` is public and reports whether the database answers and whether a Gemini key is present. It does not return either secret.
 
@@ -185,8 +184,9 @@ Unit tests cover the fine formula, borrowing refusals, route plans, the permissi
 
 ## 13. Current limits
 
-- The local database password is a development credential for the Docker container. Replace `DATABASE_URL` with Neon before deployment, then run setup, push, and seed there.
-- There are no embeddings until a Gemini key is supplied.
+- The Docker database password is a development credential. Deployment should use a Neon `DATABASE_URL`, then setup, push, and seed.
+- There are no embeddings until a Gemini key is supplied and the seed, or `POST /api/books/embeddings`, has run.
+- Reseeding invalidates existing JWTs. Users must sign in again.
 - The LangGraph checkpointer is process memory. A confirmed write can still finish from the signed confirmation payload after a restart.
 - Fines are a balance. There is no payment step.
 - Agent activity stays empty until someone completes an assistant turn.

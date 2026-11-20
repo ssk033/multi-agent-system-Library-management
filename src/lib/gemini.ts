@@ -54,6 +54,7 @@ export async function embedWithGemini(texts: string[]): Promise<number[][]> {
           content: { parts: [{ text }] },
           outputDimensionality: dimensions,
         }),
+        signal: AbortSignal.timeout(8000),
       },
     );
     const body = (await response.json()) as {

@@ -28,9 +28,25 @@ export const POST = api(async (request) => {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let closed = false;
       const send = (event: unknown) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        } catch {
+          closed = true;
+        }
       };
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          closed = true;
+        }
+      };
+      request.signal.addEventListener("abort", close);
       try {
         for await (const event of runTurn({
           user,
@@ -41,13 +57,17 @@ export const POST = api(async (request) => {
           resume: body.resume,
           confirmation: body.confirmation,
         })) {
+          if (request.signal.aborted) break;
           send(event);
         }
       } catch (error) {
-        console.error("Chat stream failed", error instanceof Error ? error.message : "unknown");
+        const message = error instanceof Error ? error.message : "unknown";
+        if (!/controller is already closed/i.test(message)) {
+          console.error("Chat stream failed", message);
+        }
         send({ type: "error", message: "The library assistant could not complete that request." });
       } finally {
-        controller.close();
+        close();
       }
     },
   });

@@ -67,10 +67,15 @@ export async function searchCatalog(filters: {
   const db = getDb();
   const conditions = [];
   if (filters.query) {
-    const pattern = `%${filters.query}%`;
-    conditions.push(
-      or(ilike(books.title, pattern), ilike(books.author, pattern), ilike(books.isbn, pattern), ilike(books.description, pattern)),
-    );
+    const words = filters.query
+      .split(/\s+/)
+      .map((word) => word.replace(/[%_\\]/g, "").trim())
+      .filter((word) => word.length >= 2);
+    const terms = words.length > 0 ? words : [filters.query.replace(/[%_\\]/g, "").trim()];
+    for (const word of terms) {
+      const pattern = `%${word}%`;
+      conditions.push(or(ilike(books.title, pattern), ilike(books.author, pattern), ilike(books.isbn, pattern), ilike(books.description, pattern)));
+    }
   }
   if (filters.author) conditions.push(ilike(books.author, `%${filters.author}%`));
   if (filters.isbn) conditions.push(ilike(books.isbn, `%${filters.isbn}%`));

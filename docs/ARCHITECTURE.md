@@ -44,11 +44,11 @@ flowchart LR
 | `src/lib` | Auth, permissions, Zod validation, routing plan, circulation rules |
 | `tests` | Unit tests and an optional Neon integration test |
 
-The database client uses `@neondatabase/serverless` with a WebSocket `Pool`. The HTTP driver cannot run interactive transactions, and circulation needs `db.transaction()` plus `FOR UPDATE`.
+The database client uses `@neondatabase/serverless` with a WebSocket `Pool` when the host contains `neon.tech`, and `node-postgres` otherwise. The HTTP driver cannot run interactive transactions, and circulation needs `db.transaction()` plus `FOR UPDATE`. The student overview is one SQL statement, including the overdue-status update, and the result is cached in memory for about 12 seconds. A loan issue, return, or renewal clears that cache.
 
 ## Authentication
 
-`src/lib/auth.config.ts` is safe for the proxy: JWT callbacks only, no database import. `src/lib/auth.ts` adds the credentials provider. Passwords are bcrypt hashes. The session carries `id`, `role`, and `studentId`. A student whose profile is missing or `INACTIVE` cannot sign in. Login attempts are rate-limited and successful sign-ins are written to `audit_logs`.
+`src/lib/auth.config.ts` is safe for the proxy: JWT callbacks only, no database import. `src/lib/auth.ts` adds the credentials provider. Passwords are bcrypt hashes. The session carries `id`, `role`, and `studentId`. A student whose profile is missing or `INACTIVE` cannot sign in. Login attempts are rate-limited and successful sign-ins are written to `audit_logs`. `GET /api/session` checks that `users.id` still exists, because `npm run db:seed` issues new ids and an old JWT would fail the chat-session foreign key.
 
 Roles are `STUDENT`, `LIBRARIAN`, and `ADMIN`. The permission matrix is `src/lib/permissions.ts`.
 
@@ -77,7 +77,7 @@ flowchart TD
 
 Write tools return a confirmation object when the user has not confirmed. The commit node is what calls `issueBook`, `returnBook`, `renewBook`, or `createAcquisitionRequest`. Approve and reject tools exist for librarians but `assertAgentMayApprove` requires `explicitLibrarianAction`. The chat runner never sets that flag. Approval happens in `POST /api/acquisitions/:id/approve` after the dashboard session is checked.
 
-When Gemini is configured, the supervisor asks for a structured next-agent decision, and each specialist runs a short tool loop. When it is not, specialists execute the same tools from a fixed plan for that intent. Traces label the fallback.
+The supervisor follows `planRoute` and does not wait on a chat-model call. Each specialist runs the same fixed tool plan for that intent: keyword catalogue search first, and a semantic search only when the question asks to find, recommend, or learn about a topic and the keyword search returned no cards. Embeddings and Dewey suggestions still use Gemini when a key is set. The final answer is composed from the tool observations so a turn does not sit on a generate call.
 
 Streaming events are `trace`, `token`, `books`, `confirmation`, and `done`. The assistant stores traces on the chat message. Agent execution rows are written after the turn for the admin monitor.
 

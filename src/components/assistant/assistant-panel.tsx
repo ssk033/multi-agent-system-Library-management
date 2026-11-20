@@ -60,6 +60,7 @@ export function AssistantPanel() {
   const [turnId, setTurnId] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const inflight = useRef<AbortController | null>(null);
 
   useEffect(() => {
     void fetch("/api/chat").then(async (response) => {
@@ -91,9 +92,19 @@ export function AssistantPanel() {
     setTraces(last?.traceEvents ?? []);
   }
 
+  function stop() {
+    inflight.current?.abort();
+    inflight.current = null;
+    setPending(false);
+  }
+
   async function send(text: string, extra?: Record<string, unknown>) {
     const content = text.trim();
-    if (!content || pending) return;
+    if (!content) return;
+    stop();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+    inflight.current = controller;
     setPending(true);
     setError(null);
     setInput("");
@@ -110,6 +121,7 @@ export function AssistantPanel() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: content, sessionId, turnId: extra?.turnId, bookId: extra?.bookId, resume: extra?.resume, confirmation: extra?.confirmation }),
+        signal: controller.signal,
       });
       if (!response.ok || !response.body) {
         const body = await response.json().catch(() => ({ error: "The assistant request failed." }));
@@ -168,6 +180,7 @@ export function AssistantPanel() {
         }
       }
     } catch (caught) {
+      if (controller.signal.aborted) return;
       const message = caught instanceof Error ? caught.message : "The assistant failed.";
       if (expiredSignIn(message)) {
         window.location.assign("/session-expired");
@@ -175,7 +188,11 @@ export function AssistantPanel() {
       }
       setError(message);
     } finally {
-      setPending(false);
+      clearTimeout(timeout);
+      if (inflight.current === controller) {
+        inflight.current = null;
+        setPending(false);
+      }
       const refreshed = await fetch("/api/chat");
       const body = await refreshed.json();
       if (body.ok) setSessions(body.data);
@@ -220,7 +237,7 @@ export function AssistantPanel() {
           )}
           {messages.map((message) => (
             <article key={message.id} className={message.role === "user" ? "ml-auto max-w-[78%] rounded-lg border border-[#b7c0d4] bg-[#eef1f8] px-3.5 py-2.5 text-[13px] leading-6 text-foreground dark:border-[#46506c] dark:bg-[#242c40]" : "max-w-[92%] rounded-lg border border-[#b7c0d4] bg-card px-3.5 py-2.5 text-[13px] leading-6 dark:border-[#46506c]"}>
-              <p className="whitespace-pre-wrap">{message.content || (pending ? "Consulting the catalog..." : "")}</p>
+              <p className="whitespace-pre-wrap">{message.content || (pending ? (traces.at(-1)?.message ?? "Checking the catalogue...") : "")}</p>
               {message.books.length > 0 && (
                 <div className="mt-3 grid gap-2">
                   {message.books.map((book) => (
@@ -251,8 +268,19 @@ export function AssistantPanel() {
             void send(input);
           }}
         >
-          <Textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder="Ask about books, loans, fines, or acquisitions" className="min-h-11" />
-          <Button type="submit" disabled={pending}>Send</Button>
+          <Textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void send(input);
+              }
+            }}
+            placeholder="Type a question and press Enter"
+            className="min-h-11"
+          />
+          {pending ? <Button type="button" variant="secondary" onClick={stop}>Stop</Button> : <Button type="submit">Send</Button>}
         </form>
       </section>
       <aside className={`${monitorOpen ? "block" : "hidden"} panel h-fit p-4 lg:sticky lg:top-20 lg:block`}>
