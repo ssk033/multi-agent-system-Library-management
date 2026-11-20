@@ -14,6 +14,7 @@ import {
 import { isUniqueViolation, num } from "@/lib/utils";
 import type { LoanDTO, SessionUser } from "@/types";
 import { recordAudit } from "@/services/auditService";
+import { clearOverviewCache } from "@/services/overviewCache";
 import { getLibrarySettings } from "@/services/settingsService";
 import { getStudentById, getStudentByRoll } from "@/services/studentService";
 
@@ -174,7 +175,7 @@ export async function issueBook(input: {
   const db = getDb();
 
   try {
-    return await db.transaction(async (tx) => {
+    const issued = await db.transaction(async (tx) => {
       await tx
         .update(loans)
         .set({ status: "OVERDUE" })
@@ -240,6 +241,8 @@ export async function issueBook(input: {
         availableCopies: claimed.availableCopies,
       };
     });
+    clearOverviewCache();
+    return issued;
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new DomainError("This student already has an active loan for this book", 409);
@@ -251,7 +254,7 @@ export async function issueBook(input: {
 export async function returnBook(input: { actor: SessionUser; loanId: string; ipAddress?: string | null }) {
   const settings = await getLibrarySettings();
   const db = getDb();
-  return db.transaction(async (tx) => {
+  const returned = await db.transaction(async (tx) => {
     const [loan] = await tx.select().from(loans).where(eq(loans.id, input.loanId)).for("update").limit(1);
     if (!loan) throw new DomainError("Loan not found", 404);
     if (input.actor.role === "STUDENT" && loan.studentId !== input.actor.studentId) {
@@ -299,12 +302,14 @@ export async function returnBook(input: { actor: SessionUser; loanId: string; ip
       availableCopies,
     };
   });
+  clearOverviewCache();
+  return returned;
 }
 
 export async function renewBook(input: { actor: SessionUser; loanId: string; ipAddress?: string | null }) {
   const settings = await getLibrarySettings();
   const db = getDb();
-  return db.transaction(async (tx) => {
+  const renewed = await db.transaction(async (tx) => {
     await tx
       .update(loans)
       .set({ status: "OVERDUE" })
@@ -348,4 +353,6 @@ export async function renewBook(input: { actor: SessionUser; loanId: string; ipA
       renewalCount: loan.renewalCount + 1,
     };
   });
+  clearOverviewCache();
+  return renewed;
 }

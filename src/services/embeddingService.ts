@@ -3,7 +3,7 @@ import { eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { books, libraryPolicies } from "@/db/schema";
 import { DomainError } from "@/lib/errors";
-import { embeddingDimensions, geminiConfigured, getEmbeddings } from "@/lib/gemini";
+import { embeddingDimensions, embedWithGemini, geminiConfigured } from "@/lib/gemini";
 
 export function contentHash(text: string): string {
   return createHash("sha256").update(text).digest("hex");
@@ -33,7 +33,7 @@ export async function embedText(text: string): Promise<number[]> {
   if (!geminiConfigured()) {
     throw new DomainError("GEMINI_API_KEY is not configured, so embeddings cannot be generated", 503);
   }
-  const vector = await getEmbeddings().embedQuery(text);
+  const [vector] = await embedWithGemini([text]);
   const expected = embeddingDimensions();
   if (vector.length !== expected) {
     throw new DomainError(
@@ -47,7 +47,7 @@ export async function embedDocuments(texts: string[]): Promise<number[][]> {
   if (!geminiConfigured()) {
     throw new DomainError("GEMINI_API_KEY is not configured, so embeddings cannot be generated", 503);
   }
-  const vectors = await getEmbeddings().embedDocuments(texts);
+  const vectors = await embedWithGemini(texts);
   const expected = embeddingDimensions();
   for (const vector of vectors) {
     if (vector.length !== expected) {

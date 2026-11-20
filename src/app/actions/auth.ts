@@ -5,10 +5,17 @@ import { signIn, signOut } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 
 function errorText(error: unknown): string {
-  if (!(error instanceof Error)) return "";
-  const cause = "cause" in error ? error.cause : undefined;
-  const causeText = cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "";
-  return `${error.message} ${causeText}`;
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const record = current as { message?: unknown; code?: unknown; cause?: unknown };
+    if (typeof record.message === "string") parts.push(record.message);
+    if (typeof record.code === "string") parts.push(record.code);
+    current = record.cause;
+  }
+  return parts.join(" ");
 }
 
 function isRedirect(error: unknown): boolean {

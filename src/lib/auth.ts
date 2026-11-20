@@ -60,6 +60,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 });
 
+const knownAccounts = new Map<string, number>();
+
+export async function accountStillExists(userId: string) {
+  const seen = knownAccounts.get(userId);
+  if (seen && Date.now() - seen < 60_000) return true;
+  const db = getDb();
+  const [row] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!row) return false;
+  knownAccounts.set(userId, Date.now());
+  return true;
+}
+
 export async function requireUser() {
   const session = await auth();
   if (!session?.user?.id || !session.user.role) {

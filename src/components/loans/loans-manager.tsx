@@ -71,7 +71,11 @@ export function LoansManager({ role, mode }: { role: UserRole; mode: "loans" | "
       <div className="mb-5">
         <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Circulation</p>
         <h1 className="mt-1 text-[1.55rem] font-semibold tracking-[-0.035em]">{mode === "returns" ? "Returns" : "Loans"}</h1>
-        <p className="mt-1.5 text-[13px] text-muted">Each issue, return, and renewal commits copies, status, and fines together.</p>
+        <p className="mt-1.5 text-[13px] text-muted">
+          {role === "STUDENT"
+            ? "Borrow a book from the catalogue. Return or renew the copies already on your account here."
+            : "Each issue, return, and renewal commits copies, status, and fines together."}
+        </p>
       </div>
       {role !== "STUDENT" && mode === "loans" && (
         <div className="panel mb-3 grid gap-3 p-3 md:grid-cols-[1fr_1fr_auto]">

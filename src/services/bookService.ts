@@ -13,7 +13,33 @@ import {
 import { getLibrarySettings } from "@/services/settingsService";
 import { geminiConfigured } from "@/lib/gemini";
 
-function toBook(row: typeof books.$inferSelect, similarity?: number): BookDTO {
+const bookColumns = {
+  id: books.id,
+  isbn: books.isbn,
+  title: books.title,
+  author: books.author,
+  publisher: books.publisher,
+  publicationYear: books.publicationYear,
+  category: books.category,
+  description: books.description,
+  deweyDecimal: books.deweyDecimal,
+  totalCopies: books.totalCopies,
+  availableCopies: books.availableCopies,
+};
+
+function toBook(row: {
+  id: string;
+  isbn: string;
+  title: string;
+  author: string;
+  publisher: string | null;
+  publicationYear: number | null;
+  category: string;
+  description: string | null;
+  deweyDecimal: string | null;
+  totalCopies: number;
+  availableCopies: number;
+}, similarity?: number): BookDTO {
   return {
     id: row.id,
     isbn: row.isbn,
@@ -53,7 +79,7 @@ export async function searchCatalog(filters: {
   if (filters.availability === "unavailable") conditions.push(eq(books.availableCopies, 0));
 
   const rows = await db
-    .select()
+    .select(bookColumns)
     .from(books)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(books.title)
@@ -69,7 +95,7 @@ export async function listCategories(): Promise<string[]> {
 
 export async function getBook(id: string): Promise<BookDTO> {
   const db = getDb();
-  const [row] = await db.select().from(books).where(eq(books.id, id)).limit(1);
+  const [row] = await db.select(bookColumns).from(books).where(eq(books.id, id)).limit(1);
   if (!row) throw new DomainError("Book not found", 404);
   return toBook(row);
 }

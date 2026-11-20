@@ -158,11 +158,22 @@ export function AssistantPanel() {
           if (event.type === "done" && event.message) {
             setMessages((current) => current.map((item) => (item.id === assistantId ? { ...item, content: event.message ?? item.content } : item)));
           }
-          if (event.type === "error") setError(event.message ?? "The assistant failed.");
+          if (event.type === "error") {
+            if (expiredSignIn(event.message)) {
+              window.location.assign("/session-expired");
+              return;
+            }
+            setError(event.message ?? "The assistant failed.");
+          }
         }
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The assistant failed.");
+      const message = caught instanceof Error ? caught.message : "The assistant failed.";
+      if (expiredSignIn(message)) {
+        window.location.assign("/session-expired");
+        return;
+      }
+      setError(message);
     } finally {
       setPending(false);
       const refreshed = await fetch("/api/chat");
@@ -201,19 +212,19 @@ export function AssistantPanel() {
           {messages.length === 0 && (
             <div className="grid gap-2 sm:grid-cols-2">
               {SUGGESTIONS.map((prompt) => (
-                <button key={prompt} className="rounded-lg border border-border bg-background px-3 py-3 text-left text-[13px] leading-5 text-foreground hover:border-primary/40" onClick={() => void send(prompt)}>
+                <button key={prompt} className="rounded-lg border border-[#b7c0d4] bg-card px-3 py-3 text-left text-[13px] leading-5 text-foreground shadow-[inset_0_0_0_1px_rgba(23,27,43,0.03)] hover:border-primary dark:border-[#46506c] dark:shadow-none" onClick={() => void send(prompt)}>
                   {prompt}
                 </button>
               ))}
             </div>
           )}
           {messages.map((message) => (
-            <article key={message.id} className={message.role === "user" ? "ml-auto max-w-[78%] rounded-lg bg-[#101626] px-3.5 py-2.5 text-[13px] leading-6 text-white dark:bg-[#242c40] dark:ring-1 dark:ring-white/10" : "max-w-[92%] border-l-2 border-primary pl-3 text-[13px] leading-6"}>
+            <article key={message.id} className={message.role === "user" ? "ml-auto max-w-[78%] rounded-lg border border-[#b7c0d4] bg-[#eef1f8] px-3.5 py-2.5 text-[13px] leading-6 text-foreground dark:border-[#46506c] dark:bg-[#242c40]" : "max-w-[92%] rounded-lg border border-[#b7c0d4] bg-card px-3.5 py-2.5 text-[13px] leading-6 dark:border-[#46506c]"}>
               <p className="whitespace-pre-wrap">{message.content || (pending ? "Consulting the catalog..." : "")}</p>
               {message.books.length > 0 && (
                 <div className="mt-3 grid gap-2">
                   {message.books.map((book) => (
-                    <div key={book.id} className="rounded-lg border border-border bg-card p-3 text-foreground">
+                    <div key={book.id} className="rounded-lg border border-[#b7c0d4] bg-background p-3 text-foreground dark:border-[#46506c]">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium tracking-[-0.02em]">{book.title}</p>
@@ -304,6 +315,10 @@ export function AssistantPanel() {
       </Dialog>
     </div>
   );
+}
+
+function expiredSignIn(message?: string) {
+  return /sign in again/i.test(message ?? "");
 }
 
 function nodeState(

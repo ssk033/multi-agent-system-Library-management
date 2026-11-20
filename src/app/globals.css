@@ -3,15 +3,15 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f6f7fb;
-  --foreground: #171b2d;
+  --background: #f7f8fc;
+  --foreground: #171b2b;
   --card: #ffffff;
   --muted: #697386;
-  --border: #e5e8f0;
+  --border: #cfd5e2;
   --primary: #5145cd;
   --primary-foreground: #ffffff;
   --accent: #7565e8;
-  --sidebar: #101626;
+  --sidebar: #101426;
   --ring: #5145cd;
   --success: #159b72;
   --warning: #d99a35;
@@ -19,18 +19,18 @@
 }
 
 .dark {
-  --background: #0c1018;
-  --foreground: #eef1f6;
-  --card: #141a26;
-  --muted: #98a2b3;
-  --border: #242c3d;
-  --primary: #8b80f0;
-  --primary-foreground: #101626;
+  --background: #101426;
+  --foreground: #e8ebf2;
+  --card: #171d31;
+  --muted: #9aa3b5;
+  --border: #2a3148;
+  --primary: #8d84ef;
+  --primary-foreground: #101426;
   --accent: #a99cf6;
-  --sidebar: #0a0e16;
+  --sidebar: #0c1020;
   --success: #5eead4;
-  --warning: #fbbf24;
-  --danger: #fda29b;
+  --warning: #e3b15a;
+  --danger: #e07a8a;
 }
 
 @theme inline {
@@ -97,6 +97,52 @@ button, input, select, textarea { font: inherit; letter-spacing: -0.011em; }
   100% { box-shadow: 0 0 0 8px rgb(81 69 205 / 0); }
 }
 
+.home-canvas {
+  background:
+    radial-gradient(ellipse 42% 32% at 78% 8%, rgb(81 69 205 / 0.1), transparent 70%),
+    radial-gradient(ellipse 36% 28% at 8% 88%, rgb(117 101 232 / 0.07), transparent 68%),
+    var(--background);
+}
+.dark .home-canvas {
+  background:
+    radial-gradient(ellipse 42% 32% at 78% 8%, rgb(117 101 232 / 0.16), transparent 70%),
+    radial-gradient(ellipse 32% 24% at 6% 90%, rgb(81 69 205 / 0.1), transparent 68%),
+    var(--background);
+}
+.home-grid {
+  background-image:
+    linear-gradient(to right, rgb(23 27 43 / 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(23 27 43 / 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at 50% 18%, #000 20%, transparent 74%);
+}
+.dark .home-grid {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.04) 1px, transparent 1px);
+}
+.orch-path {
+  fill: none;
+  stroke: #7565e8;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-dasharray: 4 7;
+  opacity: 0.45;
+  animation: dash 18s linear infinite;
+}
+[data-hover="supervisor"] .orch-path { opacity: 0.55; }
+[data-hover="discovery"] .orch-path,
+[data-hover="circulation"] .orch-path,
+[data-hover="acquisition"] .orch-path { opacity: 0.16; }
+[data-hover="discovery"] .orch-discovery,
+[data-hover="circulation"] .orch-circulation,
+[data-hover="acquisition"] .orch-acquisition { opacity: 1; }
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .agent-line, .node-live, .motion-safe { animation: none !important; transition: none !important; }
+  .agent-line, .node-live, .orch-path, .motion-safe { animation: none !important; transition: none !important; }
+  html { scroll-behavior: auto; }
 }

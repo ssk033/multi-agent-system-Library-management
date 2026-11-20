@@ -122,6 +122,8 @@ async function main() {
     { email: "student05@library.edu", isbn: "9780136681557", issuedDaysAgo: 20, dueInDays: -6, status: "OVERDUE" as const },
     { email: "student06@library.edu", isbn: "9780132126953", issuedDaysAgo: 18, dueInDays: -4, status: "OVERDUE" as const },
     { email: "student07@library.edu", isbn: "9780134794105", issuedDaysAgo: 1, dueInDays: 13, status: "ACTIVE" as const },
+    { email: "student16@library.edu", isbn: "9780262510875", issuedDaysAgo: 2, dueInDays: 12, status: "ACTIVE" as const },
+    { email: "student17@library.edu", isbn: "9781492040347", issuedDaysAgo: 8, dueInDays: 6, status: "ACTIVE" as const },
   ];
 
   for (const loan of loanPlan) {

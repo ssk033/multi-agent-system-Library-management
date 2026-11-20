@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BorrowButton } from "@/components/books/borrow-button";
 import { Badge } from "@/components/ui/badge";
+import { auth } from "@/lib/auth";
 import { getBook, recommendSimilarBooks } from "@/services/bookService";
 
 export const dynamic = "force-dynamic";
 
 export default async function BookDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await auth();
   let book: Awaited<ReturnType<typeof getBook>>;
   let similar: Awaited<ReturnType<typeof recommendSimilarBooks>>;
   try {
@@ -25,7 +28,12 @@ export default async function BookDetailPage({ params }: { params: Promise<{ id:
               <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">{book.title}</h1>
               <p className="mt-2 text-muted">{book.author}</p>
             </div>
-            <Badge tone={book.availableCopies > 0 ? "emerald" : "rose"}>{book.availableCopies} of {book.totalCopies} available</Badge>
+            <div className="flex flex-col items-end gap-3">
+              <Badge tone={book.availableCopies > 0 ? "emerald" : "rose"}>{book.availableCopies} of {book.totalCopies} available</Badge>
+              {session?.user.role === "STUDENT" && (
+                <BorrowButton bookId={book.id} title={book.title} available={book.availableCopies > 0} />
+              )}
+            </div>
           </div>
           <dl className="mt-6 grid gap-4 text-[13px] sm:grid-cols-2">
             <div><dt className="text-muted">ISBN</dt><dd className="mt-1 font-mono">{book.isbn}</dd></div>

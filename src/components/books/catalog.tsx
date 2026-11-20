@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { BorrowButton } from "@/components/books/borrow-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -113,7 +114,11 @@ export function CatalogManager({ role }: { role: UserRole }) {
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Collection</p>
           <h1 className="mt-1 text-[1.55rem] font-semibold tracking-[-0.035em]">Book Catalogue</h1>
-          <p className="mt-1.5 text-[13px] text-muted">Keyword filters query the live catalog. Semantic search needs embeddings.</p>
+          <p className="mt-1.5 text-[13px] text-muted">
+            {canWrite
+              ? "Keyword filters query the live catalog. Semantic search needs embeddings."
+              : "Search the catalog, then borrow an available title. You confirm the loan before a copy is reserved."}
+          </p>
         </div>
         {canWrite && <Button onClick={() => { setEditing(null); setForm(EMPTY); setOpen(true); }}>Add book</Button>}
       </div>
@@ -159,6 +164,9 @@ export function CatalogManager({ role }: { role: UserRole }) {
                 <td>{book.category}</td>
                 <td><Badge tone={availabilityTone(book)}>{availabilityLabel(book)}</Badge></td>
                 <td className="text-right">
+                  {!canWrite && (
+                    <BorrowButton bookId={book.id} title={book.title} available={book.availableCopies > 0} onBorrowed={() => void load()} />
+                  )}
                   {canWrite && (
                     <div className="flex justify-end gap-2">
                     <Button size="sm" variant="secondary" onClick={() => {

@@ -272,7 +272,7 @@ export async function runSpecialist(
     traces.push(
       emitTrace(
         config,
-        makeTrace(agent, "error", error instanceof Error ? error.message : "The specialist failed.", { channel: "agent" }),
+        makeTrace(agent, "handoff", "The model was unavailable, so this agent used the catalog tools directly.", { channel: "agent" }),
       ),
     );
     const fallback = await runDeterministic(agent, state, tools, traces, config);

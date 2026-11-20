@@ -4,7 +4,7 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
   return (
     <input
       className={cn(
-        "h-9 w-full rounded-lg border border-border bg-card px-3 text-[13px] text-foreground outline-none transition placeholder:text-[#98a2b3] focus:border-primary focus:ring-2 focus:ring-primary/15",
+        "h-9 w-full rounded-lg border border-[#b7c0d4] bg-card px-3 text-[13px] text-foreground outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-[#46506c]",
         className,
       )}
       {...props}
@@ -16,7 +16,7 @@ export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<H
   return (
     <textarea
       className={cn(
-        "min-h-24 w-full rounded-lg border border-border bg-card px-3 py-2 text-[13px] leading-6 text-foreground outline-none transition placeholder:text-[#98a2b3] focus:border-primary focus:ring-2 focus:ring-primary/15",
+        "min-h-24 w-full rounded-lg border border-[#b7c0d4] bg-card px-3 py-2 text-[13px] leading-6 text-foreground outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-[#46506c]",
         className,
       )}
       {...props}
@@ -32,7 +32,7 @@ export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLS
   return (
     <select
       className={cn(
-        "h-9 w-full rounded-lg border border-border bg-card px-3 text-[13px] text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15",
+        "h-9 w-full rounded-lg border border-[#b7c0d4] bg-card px-3 text-[13px] text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-[#46506c]",
         className,
       )}
       {...props}

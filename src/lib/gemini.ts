@@ -10,12 +10,18 @@ export function embeddingDimensions(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 768;
 }
 
+function chatModelName() {
+  const configured = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  if (configured === "gemini-2.5-flash" || configured === "gemini-2.0-flash") return "gemini-3.5-flash";
+  return configured;
+}
+
 export function getChatModel(temperature = 0.2) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY is not configured");
   }
   return new ChatGoogleGenerativeAI({
-    model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+    model: chatModelName(),
     apiKey: process.env.GEMINI_API_KEY,
     temperature,
     maxOutputTokens: 2048,
@@ -27,9 +33,39 @@ export function getEmbeddings() {
     throw new Error("GEMINI_API_KEY is not configured");
   }
   return new GoogleGenerativeAIEmbeddings({
-    modelName: process.env.GEMINI_EMBEDDING_MODEL || "text-embedding-004",
+    modelName: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
     apiKey: process.env.GEMINI_API_KEY,
   });
+}
+
+export async function embedWithGemini(texts: string[]): Promise<number[][]> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY is not configured");
+  const model = (process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001").replace(/^models\//, "");
+  const dimensions = embeddingDimensions();
+  const vectors: number[][] = [];
+  for (const text of texts) {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${encodeURIComponent(key)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          content: { parts: [{ text }] },
+          outputDimensionality: dimensions,
+        }),
+      },
+    );
+    const body = (await response.json()) as {
+      embedding?: { values?: number[] };
+      error?: { message?: string };
+    };
+    if (!response.ok || !body.embedding?.values) {
+      throw new Error(body.error?.message || `Embedding request failed (${response.status})`);
+    }
+    vectors.push(body.embedding.values);
+  }
+  return vectors;
 }
 
 export function messageText(content: unknown): string {

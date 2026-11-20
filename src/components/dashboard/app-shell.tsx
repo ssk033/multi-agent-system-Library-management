@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -12,18 +12,18 @@ import {
   Library,
   LogOut,
   Menu,
-  Moon,
   PackagePlus,
   ScrollText,
   Settings,
   Sparkles,
-  Sun,
   Undo2,
   Users,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
+import { BrandMark } from "@/components/brand/logo";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types";
 
@@ -50,24 +50,24 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/session", { signal: controller.signal }).then((response) => {
+      if (response.status === 401) window.location.assign("/session-expired");
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
   const [collapsed, setCollapsed] = useState(false);
-  const [dark, setDark] = useState(false);
   const items = NAV.filter((item) => item.roles.includes(user.role));
   const current = items.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
-
-  function toggleTheme() {
-    const next = !document.documentElement.classList.contains("dark");
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
-    setDark(next);
-  }
 
   const sidebar = (forceExpanded = false) => {
     const narrow = collapsed && !forceExpanded;
     return (
       <aside className={cn("flex h-full flex-col bg-sidebar text-[#d0d5dd] transition-[width] duration-200", narrow ? "w-[72px]" : "w-[248px]")}>
         <div className={cn("flex items-center gap-3 px-4 py-5", narrow && "justify-center px-2")}>
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary text-[11px] font-semibold text-white">AL</div>
+          <BrandMark className="h-8 w-8 text-white" />
           {!narrow && (
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold tracking-[-0.02em] text-white">Autonomous Library</p>
@@ -83,6 +83,7 @@ export function AppShell({
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 title={item.label}
                 onClick={() => setOpen(false)}
                 className={cn(
@@ -152,9 +153,7 @@ export function AppShell({
             </button>
             <p className="text-[13px] text-muted">{current?.label ?? "Library"}</p>
           </div>
-          <button className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted" onClick={toggleTheme} aria-label="Toggle color theme">
-            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
+          <ThemeToggle />
         </header>
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>

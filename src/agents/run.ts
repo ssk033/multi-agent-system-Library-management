@@ -33,10 +33,26 @@ function contextFor(user: SessionUser, confirmation: ConfirmationRequest | null)
   };
 }
 
+const EXPIRED = "Your sign-in no longer matches the library database. Sign in again.";
+
+function expiredSession(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return /foreign key|chat_sessions_user_id|violates/i.test(message);
+}
+
 export async function* runTurn(input: TurnInput): AsyncGenerator<StreamEvent> {
-  const session = input.sessionId
-    ? await getOwnedSession(input.sessionId, input.user.id)
-    : await createChatSession(input.user.id, input.message);
+  let session: Awaited<ReturnType<typeof createChatSession>>;
+  try {
+    session = input.sessionId
+      ? await getOwnedSession(input.sessionId, input.user.id)
+      : await createChatSession(input.user.id, input.message);
+  } catch (error) {
+    if (expiredSession(error)) {
+      yield { type: "error", message: EXPIRED };
+      return;
+    }
+    throw error;
+  }
   const sessionId = session.id;
   const turnId = input.turnId ?? crypto.randomUUID();
   const text = fenceUserText(

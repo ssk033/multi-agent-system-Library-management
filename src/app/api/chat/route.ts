@@ -1,5 +1,7 @@
 import { runTurn } from "@/agents/run";
 import { api, parseBody, readJson, requirePermission } from "@/lib/api";
+import { accountStillExists } from "@/lib/auth";
+import { DomainError } from "@/lib/errors";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { chatSchema } from "@/lib/validations";
 import { getSessionMessages, listChatSessions } from "@/services/chatService";
@@ -15,6 +17,9 @@ export const GET = api(async (request) => {
 
 export const POST = api(async (request) => {
   const user = await requirePermission("assistant");
+  if (!(await accountStillExists(user.id))) {
+    throw new DomainError("Your sign-in no longer matches the library database. Sign in again.", 401);
+  }
   const limit = rateLimit(`chat:${user.id}:${clientIp(request)}`, 30, 60_000);
   if (!limit.ok) {
     return Response.json({ ok: false, error: "Too many assistant requests. Please wait a minute." }, { status: 429 });

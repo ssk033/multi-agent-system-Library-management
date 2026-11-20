@@ -20,12 +20,13 @@ export function planRoute(message: string): AgentName[] {
   const acquire =
     /\b(purchase|buy|acquire|acquisition|order)\b/.test(q) ||
     /out of stock|unavailable/.test(q);
+  const policy = /\b(policy|policies|rule|rules|eligible|eligibility)\b/.test(q);
   const personal =
     /\b(my loans|my books|my fines|overdue)\b/.test(q) ||
     /books i currently|currently have issued|i have issued|have borrowed/.test(q);
 
-  if ((returning || renew) && !acquire) return ["circulation"];
-  if (personal && !borrow && !acquire) return ["circulation"];
+  if ((returning || renew) && !acquire && !policy) return ["circulation"];
+  if (personal && !borrow && !acquire && !policy) return ["circulation"];
 
   const plan: AgentName[] = [];
   const wantsSearch =
