@@ -87,11 +87,11 @@ The login form only checks email and password after it can read the `users` tabl
 
 ## Installation
 
-Requirements: Node.js 20 or newer. A Gemini API key is required for live model calls and embeddings. The database can be Neon, or a local Postgres 16 container with pgvector.
+Requirements: Node.js 22.12 or newer. A Gemini API key is required for live model calls and embeddings. The database can be Neon, or a local Postgres 16 container with pgvector.
 
 ```powershell
 cd autonomous-library
-npm install --legacy-peer-deps
+npm install
 Copy-Item .env.example .env.local
 ```
 
@@ -225,7 +225,7 @@ Latest local run, without Neon credentials:
 
 ## Deployment
 
-- Import the repository into Vercel. Set the same environment variables. Do not set `SEED_ALLOW_PRODUCTION` on Vercel.
+- Import the repository into Vercel. The install uses the lockfile and does not need `--legacy-peer-deps`. Set the same environment variables as `.env.local`. Do not set `SEED_ALLOW_PRODUCTION` on Vercel.
 - Create the Neon database, run `npm run db:setup`, `npm run db:push`, and, for a first demo, `npm run db:seed` from a trusted machine.
 - Point `AUTH_URL` and `NEXTAUTH_URL` at the Vercel origin.
 - Rebuild embeddings from **Settings** is not required after a normal seed. `POST /api/books/embeddings` rebuilds missing vectors for an administrator if descriptions change later.
